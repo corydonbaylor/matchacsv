@@ -1,97 +1,80 @@
 import sys
 import pandas as pd
-from PyQt6.QtWidgets import QApplication, QMainWindow, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QPushButton, QFileDialog, QMessageBox
-from PyQt6.QtGui import QFont, QKeyEvent
-from PyQt6.QtCore import Qt
+from PySide6.QtWidgets import (QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
+                             QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QFileDialog,
+                             QMessageBox, QHeaderView)
+from PySide6.QtCore import Qt
 
-# Helper function to get column label for a given number (e.g., 1 -> 'A', 27 -> 'AA')
-def get_column_labels(n):
-    labels = []
-    while n > 0:
-        n, rem = divmod(n - 1, 26)
-        labels.append(chr(65 + rem))
-    return ''.join(reversed(labels))
-
-# Helper function to generate a list of column labels (e.g., ['A', 'B', ..., 'Z'])
-def get_sheet_columns(num):
-    labels = []
-    for i in range(1, num + 1):
-        label = ''
-        n = i
-        while n > 0:
-            n, rem = divmod(n - 1, 26)
-            label = chr(65 + rem) + label
-        labels.append(label)
-    return labels
+def get_sheet_columns(n):
+    """Generate Excel-style column names (A, B, C, ..., Z, AA, AB, ...)"""
+    result = []
+    for i in range(n):
+        col = ""
+        while i >= 0:
+            col = chr(65 + (i % 26)) + col
+            i = i // 26 - 1
+        result.append(col)
+    return result
 
 class CSVEditor(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("CSV Editor")  # Set window title
-        self.setGeometry(100, 100, 800, 600)  # Set window size and position
-        self.df = None  # DataFrame to hold CSV data
-        self.column_names = None  # Store column names from CSV
+        self.df = None
+        self.column_names = None
+        self.init_ui()
+
+    def init_ui(self):
+        """Initialize the user interface."""
+        self.setWindowTitle("CSV Editor")
+        self.setGeometry(100, 100, 800, 600)
 
         # Create central widget and layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        # Create table widget for displaying/editing CSV data
+        # Create table widget
         self.table = QTableWidget()
-        self.table.setFont(QFont("Arial", 10))  # Set table font
+        self.table.setColumnCount(26)  # Start with 26 columns (A-Z)
+        self.table.setHorizontalHeaderLabels(get_sheet_columns(26))
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         layout.addWidget(self.table)
 
-        # Create 'Open CSV' button
+        # Create button layout
+        button_layout = QHBoxLayout()
+
+        # Create buttons
         open_button = QPushButton("Open CSV")
-        open_button.setFont(QFont("Arial", 10))
-        open_button.clicked.connect(self.open_csv)  # Connect button to open_csv method
-        layout.addWidget(open_button)
-
-        # Create 'Save CSV' button
         save_button = QPushButton("Save CSV")
-        save_button.setFont(QFont("Arial", 10))
-        save_button.clicked.connect(self.save_csv)  # Connect button to save_csv method
-        layout.addWidget(save_button)
+        add_row_button = QPushButton("Add Row")
+        add_col_button = QPushButton("Add Column")
+        del_row_button = QPushButton("Delete Row")
+        del_col_button = QPushButton("Delete Column")
 
-        # Set stylesheet for appearance
-        self.setStyleSheet("""
-            QTableWidget {
-                background-color: #f0f0f0;
-                gridline-color: #d0d0d0;
-            }
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 5px;
-                border-radius: 3px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-        """)
+        # Add buttons to layout
+        button_layout.addWidget(open_button)
+        button_layout.addWidget(save_button)
+        button_layout.addWidget(add_row_button)
+        button_layout.addWidget(add_col_button)
+        button_layout.addWidget(del_row_button)
+        button_layout.addWidget(del_col_button)
 
-        # Show a blank sheet (A-Z columns, 1000 rows) by default
-        self.show_blank_sheet()
+        # Add button layout to main layout
+        layout.addLayout(button_layout)
 
-    def show_blank_sheet(self):
-        """Display a blank sheet with columns A-Z and 1000 rows, like Google Sheets."""
-        num_cols = 26  # Number of columns (A-Z)
-        num_rows = 1000  # Number of rows
-        self.table.setRowCount(num_rows)
-        self.table.setColumnCount(num_cols)
-        self.table.setHorizontalHeaderLabels(get_sheet_columns(num_cols))  # Set column headers
-        self.table.setVerticalHeaderLabels([str(i+1) for i in range(num_rows)])  # Set row numbers
-        # Fill all cells with empty strings
-        for i in range(num_rows):
-            for j in range(num_cols):
-                self.table.setItem(i, j, QTableWidgetItem(""))
-        self.column_names = get_sheet_columns(num_cols)
+        # Connect signals
+        open_button.clicked.connect(self.open_csv)
+        save_button.clicked.connect(self.save_csv)
+        add_row_button.clicked.connect(self.add_row)
+        add_col_button.clicked.connect(self.add_column)
+        del_row_button.clicked.connect(self.delete_row)
+        del_col_button.clicked.connect(self.delete_column)
+
+        # Connect table signals
+        self.table.cellChanged.connect(self.handle_cell_change)
 
     def open_csv(self):
         """Open a CSV file and display its contents in the table."""
-        # ALL CAPS: THIS IS WHERE WE LOAD IN THE CSV FILE
         file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv)")
         if file_name:
             try:
@@ -111,7 +94,6 @@ class CSVEditor(QMainWindow):
         self.table.setRowCount(num_rows)
         self.table.setColumnCount(num_cols)
         self.table.setHorizontalHeaderLabels(get_sheet_columns(num_cols))
-        # ALL CAPS: THIS IS WHERE THE FIRST ROW OF THE CSV IS REMOVED FROM THE HEADER AND SHOWN AS DATA IN THE UI
         for i in range(num_rows):
             for j in range(num_cols):
                 item = QTableWidgetItem(str(self.df.iloc[i, j]))
@@ -138,31 +120,43 @@ class CSVEditor(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save CSV: {e}")
 
-    def keyPressEvent(self, event: QKeyEvent):
-        """Handle arrow key navigation in the table."""
-        if event.key() == Qt.Key.Key_Up:
-            current_row = self.table.currentRow()
-            if current_row > 0:
-                self.table.setCurrentCell(current_row - 1, self.table.currentColumn())
-        elif event.key() == Qt.Key.Key_Down:
-            current_row = self.table.currentRow()
-            if current_row < self.table.rowCount() - 1:
-                self.table.setCurrentCell(current_row + 1, self.table.currentColumn())
-        elif event.key() == Qt.Key.Key_Left:
-            current_col = self.table.currentColumn()
-            if current_col > 0:
-                self.table.setCurrentCell(self.table.currentRow(), current_col - 1)
-        elif event.key() == Qt.Key.Key_Right:
-            current_col = self.table.currentColumn()
-            if current_col < self.table.columnCount() - 1:
-                self.table.setCurrentCell(self.table.currentRow(), current_col + 1)
-        else:
-            super().keyPressEvent(event)
+    def add_row(self):
+        """Add a new row to the table."""
+        current_row = self.table.currentRow()
+        self.table.insertRow(current_row + 1 if current_row >= 0 else self.table.rowCount())
 
+    def add_column(self):
+        """Add a new column to the table."""
+        current_col = self.table.currentColumn()
+        new_col = current_col + 1 if current_col >= 0 else self.table.columnCount()
+        self.table.insertColumn(new_col)
+        self.table.setHorizontalHeaderLabels(get_sheet_columns(self.table.columnCount()))
+
+    def delete_row(self):
+        """Delete the selected row from the table."""
+        current_row = self.table.currentRow()
+        if current_row >= 0:
+            self.table.removeRow(current_row)
+
+    def delete_column(self):
+        """Delete the selected column from the table."""
+        current_col = self.table.currentColumn()
+        if current_col >= 0:
+            self.table.removeColumn(current_col)
+            self.table.setHorizontalHeaderLabels(get_sheet_columns(self.table.columnCount()))
+
+    def handle_cell_change(self, row, column):
+        """Handle changes to table cells."""
+        if self.df is not None:
+            item = self.table.item(row, column)
+            if item is not None:
+                self.df.iloc[row, column] = item.text()
+
+def main():
+    app = QApplication(sys.argv)
+    editor = CSVEditor()
+    editor.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    # Start the Qt application
-    app = QApplication(sys.argv)
-    window = CSVEditor()
-    window.show()
-    sys.exit(app.exec()) 
+    main() 
