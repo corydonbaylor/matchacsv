@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QTableWidget, QTableWi
                              QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QFileDialog,
                              QMessageBox, QHeaderView)
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QAction  # <-- QAction is here in Qt6
 
 def get_sheet_columns(n):
     """Generate Excel-style column names (A, B, C, ..., Z, AA, AB, ...)"""
@@ -17,43 +18,73 @@ def get_sheet_columns(n):
     return result
 
 class CSVEditor(QMainWindow):
+    """A simple CSV editor using PySide6 and pandas."""
     def __init__(self):
         super().__init__()
-        self.df = None
-        self.column_names = None
-        self.init_ui()
+        self.df = pd.DataFrame(
+            [["" for _ in range(26)] for _ in range(100)],  # 100 rows, 26 columns
+            columns=get_sheet_columns(26)
+        )
+        self.column_names = list(self.df.columns)
+        self.init_ui() # calls the below method to set up the UI
 
     def init_ui(self):
         """Initialize the user interface."""
-        self.setWindowTitle("CSV Editor")
+        self.setWindowTitle("MatchaCSV")
         self.setGeometry(100, 100, 800, 600)
 
         # Create central widget and layout
+        ## this creates a blank canvas for the main window
         central_widget = QWidget()
+        ## this tells the main window to use the central widget
+        ## anything you want to show inside the main window will go inside this widget 
         self.setCentralWidget(central_widget)
+
+        # we will use a vertical layout to stack the table and buttons
         layout = QVBoxLayout(central_widget)
 
+        ##~~~~ CREATE TABLE WIDGET ~~~##
         # Create table widget
         self.table = QTableWidget()
-        self.table.setColumnCount(26)  # Start with 26 columns (A-Z)
+        # we create 26 columns (A-Z) initially
+        self.table.setColumnCount(26)  
+        # we then use the get_sheet_columns function to set the headers
         self.table.setHorizontalHeaderLabels(get_sheet_columns(26))
+        # Set the table to stretch to fill the window
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        # add self.table to the layout
         layout.addWidget(self.table)
+        self.update_table()
 
+        ##~~~~ CREATE MENU ~~~##
+        # first we are going to create a menu bar
+        menu_bar = self.menuBar()
+        # then we add a "File" menu to the menu bar
+        file_menu = menu_bar.addMenu("File")
+
+        # Create actions for File menu
+        open_action = QAction("Open CSV", self)
+        save_action = QAction("Save CSV", self)
+
+        # Connect actions to methods
+        open_action.triggered.connect(self.open_csv)
+        save_action.triggered.connect(self.save_csv)
+
+        # Add actions to File menu
+        file_menu.addAction(open_action)
+        file_menu.addAction(save_action)
+
+        ##~~~~ CREATE BUTTONS WIDGET ~~~##
         # Create button layout
         button_layout = QHBoxLayout()
 
         # Create buttons
-        open_button = QPushButton("Open CSV")
-        save_button = QPushButton("Save CSV")
         add_row_button = QPushButton("Add Row")
         add_col_button = QPushButton("Add Column")
         del_row_button = QPushButton("Delete Row")
         del_col_button = QPushButton("Delete Column")
 
         # Add buttons to layout
-        button_layout.addWidget(open_button)
-        button_layout.addWidget(save_button)
         button_layout.addWidget(add_row_button)
         button_layout.addWidget(add_col_button)
         button_layout.addWidget(del_row_button)
@@ -63,14 +94,14 @@ class CSVEditor(QMainWindow):
         layout.addLayout(button_layout)
 
         # Connect signals
-        open_button.clicked.connect(self.open_csv)
-        save_button.clicked.connect(self.save_csv)
         add_row_button.clicked.connect(self.add_row)
         add_col_button.clicked.connect(self.add_column)
         del_row_button.clicked.connect(self.delete_row)
         del_col_button.clicked.connect(self.delete_column)
 
         # Connect table signals
+        # each time a cell is changed, we will call the handle_cell_change method
+        # this includes the row and column indices of the changed cell
         self.table.cellChanged.connect(self.handle_cell_change)
 
     def open_csv(self):
@@ -86,39 +117,48 @@ class CSVEditor(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to open CSV: {e}")
 
     def update_table(self):
-        """Update the table widget to display the contents of the DataFrame."""
         if self.df is None:
             return
-        num_rows = len(self.df)
-        num_cols = len(self.df.columns)
+        self.table.blockSignals(True)
+        num_rows, num_cols = len(self.df), len(self.df.columns)
         self.table.setRowCount(num_rows)
         self.table.setColumnCount(num_cols)
         self.table.setHorizontalHeaderLabels(get_sheet_columns(num_cols))
         for i in range(num_rows):
             for j in range(num_cols):
-                item = QTableWidgetItem(str(self.df.iloc[i, j]))
-                self.table.setItem(i, j, item)
+                self.table.setItem(i, j, QTableWidgetItem(str(self.df.iloc[i, j])))
+        self.table.blockSignals(False)
 
     def save_csv(self):
-        """Save the current table contents to a CSV file."""
+        """Save only populated rows/columns to CSV."""
         file_name, _ = QFileDialog.getSaveFileName(self, "Save CSV File", "", "CSV Files (*.csv)")
-        if file_name:
-            try:
-                # Get data directly from the table widget
-                data = []
-                for row in range(self.table.rowCount()):
-                    row_data = []
-                    for col in range(self.table.columnCount()):
-                        item = self.table.item(row, col)
-                        row_data.append(item.text() if item else "")
-                    data.append(row_data)
-                
-                # Convert to DataFrame and save without index
-                df = pd.DataFrame(data)
-                df.to_csv(file_name, index=False, header=False)
-                QMessageBox.information(self, "Success", "File saved successfully!")
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to save CSV: {e}")
+        if not file_name:
+            return
+        try:
+            # Pull data from the table
+            data = []
+            for r in range(self.table.rowCount()):
+                row = []
+                for c in range(self.table.columnCount()):
+                    item = self.table.item(r, c)
+                    row.append(item.text() if item else "")
+                data.append(row)
+
+            df = pd.DataFrame(data)
+
+            # Treat "", None, or whitespace-only as empty; then drop all-empty rows/cols
+            df = df.applymap(lambda x: pd.NA if (x is None or (isinstance(x, str) and x.strip() == "")) else x)
+            df = df.dropna(how="all")            # drop empty rows
+            df = df.dropna(axis=1, how="all")    # drop empty columns
+
+            # Optionally: if everything was empty, write an empty file
+            if df.empty:
+                df = pd.DataFrame()
+
+            df.to_csv(file_name, index=False, header=False)
+            QMessageBox.information(self, "Success", "File saved successfully!")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to save CSV: {e}")
 
     def add_row(self):
         """Add a new row to the table."""
@@ -147,10 +187,13 @@ class CSVEditor(QMainWindow):
 
     def handle_cell_change(self, row, column):
         """Handle changes to table cells."""
+        # checks if dataframe exists
         if self.df is not None:
+            # returns qtablewidgetitem at the specified row and column
+            # if the item is not None, it updates the DataFrame with the new text
             item = self.table.item(row, column)
             if item is not None:
-                self.df.iloc[row, column] = item.text()
+                self.df.iloc[row, column] = item.text() 
 
 def main():
     app = QApplication(sys.argv)
