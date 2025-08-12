@@ -1,6 +1,10 @@
 # code_runner.py
 import traceback
 import pandas as pd
+import siuba
+from siuba import _, select, filter, mutate, summarize, group_by, arrange
+siuba_available = True
+
 from PySide6.QtWidgets import QPlainTextEdit, QPushButton, QHBoxLayout
 from PySide6.QtGui import QShortcut, QKeySequence
 
@@ -13,12 +17,18 @@ def create_code_bar(window):
 
     # Attach widgets onto the window for easy access elsewhere
     window.code_input = QPlainTextEdit()
-    window.code_input.setPlaceholderText(
+    placeholder = (
         "Pandas code. 'df' is the current DataFrame.\n"
         "Examples:\n"
         "df = df.head(10)\n"
         "df['Total'] = pd.to_numeric(df[0], errors='coerce') + pd.to_numeric(df[1], errors='coerce')"
     )
+    if siuba_available:
+        placeholder += (
+            "\n\nsiuba example:\n"
+            "df2 = df >> filter_(_.col1 > 10) >> select(_.col1, _.col2)"
+        )
+    window.code_input.setPlaceholderText(placeholder)
     window.code_input.setFixedHeight(110)
 
     run_btn = QPushButton("Run (Ctrl+Enter)")
@@ -109,6 +119,18 @@ def run_code(window):
         return
 
     local_env = {"pd": pd, "df": window.df}
+    if siuba_available:
+        from siuba import _, select, filter, mutate, summarize, group_by, arrange
+        local_env.update({
+            "_": _,
+            "select": select,
+            "filter": filter,
+            "mutate": mutate,
+            "summarize": summarize,
+            "group_by": group_by,
+            "arrange": arrange
+        })
+
     non_df_result = None
 
     try:
@@ -138,6 +160,14 @@ def run_code(window):
             else:
                 window.output_box.setPlainText("No DataFrame produced and no evaluable result to display.")
 
-    except Exception:
+    except Exception as e:
         _ensure_output_box(window)
-        window.output_box.setPlainText("Error running code:\n" + traceback.format_exc())
+        if not siuba_available and ("siuba" in code or "filter_" in code or "select" in code or "_" in code):
+            window.output_box.setPlainText(
+                "Error running code:\n"
+                + str(e)
+                + "\n\nIt looks like you are trying to use siuba but it is not installed.\n"
+                + "Please install it with: pip install siuba"
+            )
+        else:
+            window.output_box.setPlainText("Error running code:\n" + traceback.format_exc())
