@@ -2,7 +2,7 @@
 from PySide6.QtGui import QAction
 import pandas as pd
 from PySide6.QtWidgets import QFileDialog, QMessageBox
-
+import whisk
 
 def setup_file_menu(window):
     """Attach a File menu to the given QMainWindow and wire handlers."""
@@ -36,9 +36,10 @@ def open_csv(window):
     if file_name:
         try:
             # Read CSV with header=None so the first row is treated as data
-            window.df = pd.read_csv(file_name, header=None)
-            window.column_names = list(window.df.columns)  # Store the column names
+            # A/B/C visual headers will be set by the table, not stored in df
+            window.df = pd.read_csv(file_name, header=0, dtype=str, keep_default_na=False)
             window.update_table()
+            print(window.df)
         except Exception as e:
             QMessageBox.critical(window, "Error", f"Failed to open CSV: {e}")
 
@@ -59,10 +60,7 @@ def save_csv(window):
 
         df = pd.DataFrame(data)
 
-        # Treat "", None, or whitespace-only as empty; then drop all-empty rows/cols
-        df = df.applymap(lambda x: pd.NA if (x is None or (isinstance(x, str) and x.strip() == "")) else x)
-        df = df.dropna(how="all")            # drop empty rows
-        df = df.dropna(axis=1, how="all")    # drop empty columns
+        df = whisk.filter_non_empty(df)
 
         # Optionally: if everything was empty, write an empty file
         if df.empty:

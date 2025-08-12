@@ -9,6 +9,6 @@ def setup_table():
         # we then use the get_sheet_columns function to set the headers
         table.setHorizontalHeaderLabels(whisk.get_sheet_columns(26))
         # Set the table to stretch to fill the window
-        table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         # add self.table to the layout
         return table

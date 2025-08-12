@@ -32,15 +32,19 @@ class CSVEditor(QMainWindow):
 
         # we will use a vertical layout to stack the table and buttons
         layout = QVBoxLayout(central_widget)
+        
+        layout.addLayout(whisk.create_code_bar(self))
+        layout.addWidget(whisk.create_output_box(self))
 
         ##~~~~ CREATE TABLE WIDGET ~~~##
         # Create table widget
         self.table = whisk.setup_table()
-        
         # add self.table to the layout
         layout.addWidget(self.table)
+        # update table with initial data
         self.update_table()
 
+        ##~~~~ SETUP FILE MENU ~~~##
         whisk.setup_file_menu(self)
 
         ##~~~~ CREATE BUTTONS WIDGET ~~~##
@@ -77,13 +81,22 @@ class CSVEditor(QMainWindow):
         if self.df is None:
             return
         self.table.blockSignals(True)
+
         num_rows, num_cols = len(self.df), len(self.df.columns)
+
+        # Table size
         self.table.setRowCount(num_rows)
         self.table.setColumnCount(num_cols)
-        self.table.setHorizontalHeaderLabels(whisk.get_sheet_columns(num_cols))
+
+        # Always use A, B, C... for *visual* column headers
+        self.table.setHorizontalHeaderLabels([str(c) for c in self.df.columns])
+
+        # Populate cells with actual DataFrame values (including column names in row 0)
         for i in range(num_rows):
             for j in range(num_cols):
-                self.table.setItem(i, j, QTableWidgetItem(str(self.df.iloc[i, j])))
+                value = self.df.iloc[i, j]
+                self.table.setItem(i, j, QTableWidgetItem(str(value)))
+
         self.table.blockSignals(False)
 
 
@@ -97,7 +110,7 @@ class CSVEditor(QMainWindow):
         current_col = self.table.currentColumn()
         new_col = current_col + 1 if current_col >= 0 else self.table.columnCount()
         self.table.insertColumn(new_col)
-        self.table.setHorizontalHeaderLabels(whisk.get_sheet_columns(self.table.columnCount()))
+        self.table.setHorizontalHeaderLabels([str(c) for c in self.df.columns])
 
     def delete_row(self):
         """Delete the selected row from the table."""
@@ -110,7 +123,7 @@ class CSVEditor(QMainWindow):
         current_col = self.table.currentColumn()
         if current_col >= 0:
             self.table.removeColumn(current_col)
-            self.table.setHorizontalHeaderLabels(whisk.get_sheet_columns(self.table.columnCount()))
+            self.table.setHorizontalHeaderLabels([str(c) for c in self.df.columns])
 
     def handle_cell_change(self, row, column):
         """Handle changes to table cells."""
