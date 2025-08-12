@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QTableWidget, QTableWi
                              QMessageBox, QHeaderView)
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction  # <-- QAction is here in Qt6
+import whisk
 
 def get_sheet_columns(n):
     """Generate Excel-style column names (A, B, C, ..., Z, AA, AB, ...)"""
@@ -56,23 +57,7 @@ class CSVEditor(QMainWindow):
         layout.addWidget(self.table)
         self.update_table()
 
-        ##~~~~ CREATE MENU ~~~##
-        # first we are going to create a menu bar
-        menu_bar = self.menuBar()
-        # then we add a "File" menu to the menu bar
-        file_menu = menu_bar.addMenu("File")
-
-        # Create actions for File menu
-        open_action = QAction("Open CSV", self)
-        save_action = QAction("Save CSV", self)
-
-        # Connect actions to methods
-        open_action.triggered.connect(self.open_csv)
-        save_action.triggered.connect(self.save_csv)
-
-        # Add actions to File menu
-        file_menu.addAction(open_action)
-        file_menu.addAction(save_action)
+        whisk.setup_file_menu(self)
 
         ##~~~~ CREATE BUTTONS WIDGET ~~~##
         # Create button layout
@@ -104,18 +89,6 @@ class CSVEditor(QMainWindow):
         # this includes the row and column indices of the changed cell
         self.table.cellChanged.connect(self.handle_cell_change)
 
-    def open_csv(self):
-        """Open a CSV file and display its contents in the table."""
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv)")
-        if file_name:
-            try:
-                # Read CSV with header=None so the first row is treated as data
-                self.df = pd.read_csv(file_name, header=None)
-                self.column_names = list(self.df.columns)  # Store the column names
-                self.update_table()
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to open CSV: {e}")
-
     def update_table(self):
         if self.df is None:
             return
@@ -129,36 +102,6 @@ class CSVEditor(QMainWindow):
                 self.table.setItem(i, j, QTableWidgetItem(str(self.df.iloc[i, j])))
         self.table.blockSignals(False)
 
-    def save_csv(self):
-        """Save only populated rows/columns to CSV."""
-        file_name, _ = QFileDialog.getSaveFileName(self, "Save CSV File", "", "CSV Files (*.csv)")
-        if not file_name:
-            return
-        try:
-            # Pull data from the table
-            data = []
-            for r in range(self.table.rowCount()):
-                row = []
-                for c in range(self.table.columnCount()):
-                    item = self.table.item(r, c)
-                    row.append(item.text() if item else "")
-                data.append(row)
-
-            df = pd.DataFrame(data)
-
-            # Treat "", None, or whitespace-only as empty; then drop all-empty rows/cols
-            df = df.applymap(lambda x: pd.NA if (x is None or (isinstance(x, str) and x.strip() == "")) else x)
-            df = df.dropna(how="all")            # drop empty rows
-            df = df.dropna(axis=1, how="all")    # drop empty columns
-
-            # Optionally: if everything was empty, write an empty file
-            if df.empty:
-                df = pd.DataFrame()
-
-            df.to_csv(file_name, index=False, header=False)
-            QMessageBox.information(self, "Success", "File saved successfully!")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save CSV: {e}")
 
     def add_row(self):
         """Add a new row to the table."""
