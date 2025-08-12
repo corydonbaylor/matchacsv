@@ -7,24 +7,13 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction  # <-- QAction is here in Qt6
 import whisk
 
-def get_sheet_columns(n):
-    """Generate Excel-style column names (A, B, C, ..., Z, AA, AB, ...)"""
-    result = []
-    for i in range(n):
-        col = ""
-        while i >= 0:
-            col = chr(65 + (i % 26)) + col
-            i = i // 26 - 1
-        result.append(col)
-    return result
-
 class CSVEditor(QMainWindow):
     """A simple CSV editor using PySide6 and pandas."""
     def __init__(self):
         super().__init__()
         self.df = pd.DataFrame(
             [["" for _ in range(26)] for _ in range(100)],  # 100 rows, 26 columns
-            columns=get_sheet_columns(26)
+            columns=whisk.get_sheet_columns(26)
         )
         self.column_names = list(self.df.columns)
         self.init_ui() # calls the below method to set up the UI
@@ -46,13 +35,8 @@ class CSVEditor(QMainWindow):
 
         ##~~~~ CREATE TABLE WIDGET ~~~##
         # Create table widget
-        self.table = QTableWidget()
-        # we create 26 columns (A-Z) initially
-        self.table.setColumnCount(26)  
-        # we then use the get_sheet_columns function to set the headers
-        self.table.setHorizontalHeaderLabels(get_sheet_columns(26))
-        # Set the table to stretch to fill the window
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table = whisk.setup_table()
+        
         # add self.table to the layout
         layout.addWidget(self.table)
         self.update_table()
@@ -96,7 +80,7 @@ class CSVEditor(QMainWindow):
         num_rows, num_cols = len(self.df), len(self.df.columns)
         self.table.setRowCount(num_rows)
         self.table.setColumnCount(num_cols)
-        self.table.setHorizontalHeaderLabels(get_sheet_columns(num_cols))
+        self.table.setHorizontalHeaderLabels(whisk.get_sheet_columns(num_cols))
         for i in range(num_rows):
             for j in range(num_cols):
                 self.table.setItem(i, j, QTableWidgetItem(str(self.df.iloc[i, j])))
@@ -113,7 +97,7 @@ class CSVEditor(QMainWindow):
         current_col = self.table.currentColumn()
         new_col = current_col + 1 if current_col >= 0 else self.table.columnCount()
         self.table.insertColumn(new_col)
-        self.table.setHorizontalHeaderLabels(get_sheet_columns(self.table.columnCount()))
+        self.table.setHorizontalHeaderLabels(whisk.get_sheet_columns(self.table.columnCount()))
 
     def delete_row(self):
         """Delete the selected row from the table."""
@@ -126,7 +110,7 @@ class CSVEditor(QMainWindow):
         current_col = self.table.currentColumn()
         if current_col >= 0:
             self.table.removeColumn(current_col)
-            self.table.setHorizontalHeaderLabels(get_sheet_columns(self.table.columnCount()))
+            self.table.setHorizontalHeaderLabels(whisk.get_sheet_columns(self.table.columnCount()))
 
     def handle_cell_change(self, row, column):
         """Handle changes to table cells."""
