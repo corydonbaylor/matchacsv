@@ -1,5 +1,5 @@
 numpy==1.26.4
-pandas==2.2.0
+pandas==2.0.3
 PyQt6==6.6.1
 PyQt6-Qt6==6.9.1
 PyQt6_sip==13.10.2
@@ -8,6 +8,10 @@ PySide6_Addons==6.9.1
 PySide6_Essentials==6.9.1
 python-dateutil==2.9.0.post0
 pytz==2025.2
+PyYAML==6.0.2
 shiboken6==6.9.1
+siuba==0.4.4
 six==1.17.0
+SQLAlchemy==2.0.43
+typing_extensions==4.14.1
 tzdata==2025.2
