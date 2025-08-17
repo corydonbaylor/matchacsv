@@ -109,15 +109,16 @@ def _deheaderize(logical_df: pd.DataFrame) -> pd.DataFrame:
 
 def run_code(window):
     """
-    Execute pandas code from the top text box directly against window.df.
-    - If the result is a DataFrame (via eval or reassignment), adopt it.
-    - Otherwise, render the result text in the bottom output box.
-    - Errors are captured and shown in the bottom output box.
+    Execute pandas/siuba code from the code box against window.df.
+    If the result is a DataFrame, push an undoable command so Cmd+Z reverts it.
+    Non-DataFrame results are printed to the output box.
     """
+    from PySide6.QtGui import QUndoCommand  # local import to avoid global dependency
     code = window.code_input.toPlainText().strip()
     if not code:
         return
 
+    # Local environment with current df
     local_env = {"pd": pd, "df": window.df}
     if siuba_available:
         from siuba import _, select, filter, mutate, summarize, group_by, arrange
@@ -145,24 +146,67 @@ def run_code(window):
             # Not an expression → run statements (e.g., "df = df.dropna()")
             exec(code, {}, local_env)
 
-        # Did we end up with a DataFrame?
+        # Determine if we produced a new DataFrame
         new_df = local_env.get("df", None)
+
+        # Helper: ensure output box exists
+        _ensure_output_box(window)
+
         if isinstance(new_df, pd.DataFrame):
-            window.df = new_df
-            window.update_table()
-            _ensure_output_box(window)
-            window.output_box.setPlainText(f"DataFrame updated. Shape: {window.df.shape}")
+            # Take a deep snapshot BEFORE and AFTER (so undo/redo is exact)
+            before_df = window.df.copy(deep=True) if window.df is not None else pd.DataFrame()
+            after_df = new_df.copy(deep=True)
+
+            # If nothing actually changed, just show a note
+            try:
+                if window.df is not None and before_df.equals(after_df):
+                    window.output_box.setPlainText(
+                        f"No change to DataFrame (shape: {after_df.shape})."
+                    )
+                    return
+            except Exception:
+                # If equals() fails for any reason, proceed with command
+                pass
+
+            # Define an undoable command for the code run
+            class CodeRunCommand(QUndoCommand):
+                def __init__(self, wnd, bdf, adf):
+                    super().__init__("Run code")
+                    self._w = wnd
+                    self._before = bdf
+                    self._after = adf
+
+                def _apply(self, df):
+                    self._w.df = df.copy(deep=True)
+                    self._w.table.set_dataframe(self._w.df)
+                    # Optional feedback
+                    self._w.output_box.setPlainText(
+                        f"DataFrame updated. Shape: {self._w.df.shape}"
+                    )
+
+                def undo(self):
+                    self._apply(self._before)
+
+                def redo(self):
+                    self._apply(self._after)
+
+            # Push onto the SAME stack used by cell edits
+            stack = window.table.undo_stack()
+            stack.push(CodeRunCommand(window, before_df, after_df))
+            # Note: push() calls redo() automatically — that updates the UI.
+
         else:
-            # Show non-DataFrame result (or a helpful message) in bottom box
-            _ensure_output_box(window)
+            # Non-DataFrame result: print something useful
             if non_df_result is not None:
                 window.output_box.setPlainText(_to_text(non_df_result))
             else:
-                window.output_box.setPlainText("No DataFrame produced and no evaluable result to display.")
+                window.output_box.setPlainText(
+                    "No DataFrame produced and no evaluable result to display."
+                )
 
     except Exception as e:
         _ensure_output_box(window)
-        if not siuba_available and ("siuba" in code or "filter_" in code or "select" in code or "_" in code):
+        if not siuba_available and ("siuba" in code or "filter" in code or "_" in code):
             window.output_box.setPlainText(
                 "Error running code:\n"
                 + str(e)
