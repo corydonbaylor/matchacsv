@@ -1,11 +1,10 @@
 import sys
 import pandas as pd
-from PySide6.QtWidgets import (QApplication, QMainWindow, QTableWidget, QTableWidgetItem,
-                             QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QFileDialog,
-                             QMessageBox, QHeaderView)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction  # <-- QAction is here in Qt6
+from PySide6.QtWidgets import (QApplication, QMainWindow, 
+                             QVBoxLayout, QHBoxLayout, QWidget, QPushButton, 
+                             )
 import whisk
+from PySide6.QtGui import QKeySequence
 
 class CSVEditor(QMainWindow):
     """A simple CSV editor using PySide6 and pandas."""
@@ -37,13 +36,22 @@ class CSVEditor(QMainWindow):
         layout.addWidget(whisk.create_output_box(self))
 
         ##~~~~ CREATE TABLE WIDGET ~~~##
-        # Create table widget
-        self.table = whisk.setup_table()
-        # add self.table to the layout
+        self.table = whisk.Table(parent=self)
         layout.addWidget(self.table)
-        # update table with initial data
-        self.update_table()
+        # render current DataFrame
+        self.table.set_dataframe(self.df)
+        
+        # Create actions from the table’s undo stack
+        undo_action = self.table.undo_stack().createUndoAction(self, "Undo")
+        redo_action = self.table.undo_stack().createRedoAction(self, "Redo")
 
+        # Standard shortcuts (Qt maps Ctrl to ⌘ on macOS)
+        undo_action.setShortcut(QKeySequence.Undo)
+        redo_action.setShortcuts([QKeySequence.Redo, QKeySequence("Ctrl+Shift+Z")])
+
+        # Make the window listen for these shortcuts
+        self.addAction(undo_action)
+        self.addAction(redo_action)
         ##~~~~ SETUP FILE MENU ~~~##
         whisk.setup_file_menu(self)
 
@@ -72,32 +80,11 @@ class CSVEditor(QMainWindow):
         del_row_button.clicked.connect(self.delete_row)
         del_col_button.clicked.connect(self.delete_column)
 
-        # Connect table signals
-        # each time a cell is changed, we will call the handle_cell_change method
-        # this includes the row and column indices of the changed cell
-        self.table.cellChanged.connect(self.handle_cell_change)
-
+    # this is used to pass the df from the main class to the table class
     def update_table(self):
         if self.df is None:
             return
-        self.table.blockSignals(True)
-
-        num_rows, num_cols = len(self.df), len(self.df.columns)
-
-        # Table size
-        self.table.setRowCount(num_rows)
-        self.table.setColumnCount(num_cols)
-
-        # Always use A, B, C... for *visual* column headers
-        self.table.setHorizontalHeaderLabels([str(c) for c in self.df.columns])
-
-        # Populate cells with actual DataFrame values (including column names in row 0)
-        for i in range(num_rows):
-            for j in range(num_cols):
-                value = self.df.iloc[i, j]
-                self.table.setItem(i, j, QTableWidgetItem(str(value)))
-
-        self.table.blockSignals(False)
+        self.table.set_dataframe(self.df)
 
 
     def add_row(self):
@@ -124,16 +111,6 @@ class CSVEditor(QMainWindow):
         if current_col >= 0:
             self.table.removeColumn(current_col)
             self.table.setHorizontalHeaderLabels([str(c) for c in self.df.columns])
-
-    def handle_cell_change(self, row, column):
-        """Handle changes to table cells."""
-        # checks if dataframe exists
-        if self.df is not None:
-            # returns qtablewidgetitem at the specified row and column
-            # if the item is not None, it updates the DataFrame with the new text
-            item = self.table.item(row, column)
-            if item is not None:
-                self.df.iloc[row, column] = item.text() 
 
 def main():
     app = QApplication(sys.argv)

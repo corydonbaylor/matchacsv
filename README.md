@@ -1,8 +1,5 @@
 # matchacsv
 
-Here’s a concise, copy‑pasteable **README** section for setting up and running your project with **uv**.
-
-
 
 # **Setup (with uv)**
 
